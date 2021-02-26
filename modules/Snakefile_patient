@@ -1,0 +1,75 @@
+rule merge_seurat:
+    input:
+          out + "reanalysis/{patient}-T/outs/seurat/seurat.Rdata",
+          out + "reanalysis/{patient}-N/outs/seurat/seurat.Rdata",
+
+    output:
+          out + "patient/{patient}/tumor_normal_corrected_counts_data_all_genes.csv",
+          out + "patient/{patient}/tumor_normal_meta_data.csv",
+          out + "patient/{patient}/tumor_normal_sample.csv",
+          out + "patient/{patient}/merge.Rdata"
+    threads: 2
+    script: "../script/patient_seurat.R"
+
+rule infercnv:
+    input:
+          out + "patient/{patient}/merge.Rdata",
+          genes
+    output:
+          out + "patient/{patient}/infercnv.html"
+    threads: 4
+    shell:
+          """
+          module load java/1.8.0_211
+          cp script/infercnv.Rmd {out}patient/{wildcards.patient}/
+          cd {out}patient/{wildcards.patient}/
+          export no_proxy=localhost
+          export _JAVA_OPTIONS="-Duser.home=/data/$USER"
+          xvfb-run Rscript -e "rmarkdown::render('infercnv.Rmd', params=list(genes='{input[1]}'),output_file='infercnv.html')" 2>{run}log/{wildcards.patient}_infercnv.err
+          """
+
+rule matrix:
+    input:
+          rules.infercnv.output
+    output:
+          out + "patient/{patient}/inferCNV/scRNA.CNV.txt",
+          out + "patient/{patient}/inferCNV/node_cyto.txt"
+    threads: 1
+    shell:
+          """
+          cd {out}patient/{wildcards.patient}/inferCNV
+          Rscript {run}script/medalt_matrix.R 2>{run}log/{wildcards.patient}_matrix.err
+          """
+
+rule medalt_group:
+    input:
+          out + "patient/{patient}/inferCNV/scRNA.CNV.txt"
+    output:
+          out + "patient/{patient}/MEDALT_group/CNV.tree.txt",
+          out + "patient/{patient}/MEDALT_group/singlecell.tree.pdf",
+          out + "patient/{patient}/MEDALT_group/CNV.tree2.txt"
+    threads: 2
+    shell:
+          """
+          module load python/2.7
+          module load R/3.5
+          python {medalt}scTree.py -P {medalt} -I {input} -D R -W 100 -G {genome} -O {out}patient/{wildcards.patient}/MEDALT_group/ 2>/{run}log/{wildcards.patient}_medalt_group.err
+          cp {output[0]} {output[2]}
+          sed -i -e 's/from/source/g' -e 's/to/target/g' -e 's/X//g' {output[2]} 2>{run}log/{wildcards.patient}_cytofile.err
+          """
+
+rule cytoscape:
+    input:
+          out + "patient/{patient}/MEDALT_group/CNV.tree2.txt",
+          out + "patient/{patient}/inferCNV/node_cyto.txt",
+          scCNV_group
+    output:
+          out + "patient/{patient}/MEDALT_group/medalt.group.force.directed.pdf"
+    threads: 2
+    shell:
+          """
+          cd {out}patient/{wildcards.patient}/MEDALT_group/
+          export no_proxy=localhost
+          export _JAVA_OPTIONS="-Duser.home=/data/$USER"
+          xvfb-run Cytoscape -R 1234 & sleep 5m && Rscript {run}script/cytoscape_group.R -s '{input[2]}' 2> {run}log/{wildcards.patient}_cytoscape.err
+          """

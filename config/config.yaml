@@ -1,0 +1,28 @@
+# if single nuclei RNA-seq?
+snRNA: 'yes'
+# flowcell
+flowcells: 'diem'
+# raw data directory
+raw: '/data/CGR_10X/raw_data/snRNA/diem_test/'
+# path to samplesheet
+table: '/data/CGR_10X/raw_data/snRNA/diem_test/diem_test-simple-1.0.0.csv'
+# directory to store fastq files
+fastq: '/data/CGR_10X/fastq/snRNA/diem/diem/'
+# output directory
+out: '/data/CGR_10X/project_output/snRNA/diem/'
+# path to medalt software
+medalt: '/data/CGR_10X/software/MEDALT/'
+# reference genome
+genome: 'hg38'
+# reference fasta file
+fasta: '/fdb/cellranger/refdata-gex-GRCh38-2020-A/fasta/genome.fa'
+# reference gtf files
+gtf: '/fdb/cellranger/refdata-gex-GRCh38-2020-A/genes/genes.gtf'
+# direcotry to cellramger reference for scRNA
+scRNA_ref: '/fdb/cellranger/refdata-gex-GRCh38-2020-A'
+# gene position file
+genes: '/data/CGR_10X/reference/hg38_premRNA/refdata-gex-GRCh38-2020-A_premrna/genes/gene_order.txt'
+## To run CNV evolutionary analysis in tumor-normal paired patient samples:
+# input 'ready' when the the below file is ready:
+# {run}/patient.txt
+patient: 'ready'

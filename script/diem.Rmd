@@ -1,0 +1,147 @@
+---
+title: "diem"
+author: "Jieqiong Dai"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+      html_document:
+        code_folding: hide
+        toc: true
+        toc_float: true
+        
+---
+
+<style type="text/css">
+
+body{ /* Normal  */
+      font-size: 12px;
+  }
+td {  /* Table  */
+  font-size: 12px;
+}
+h1.title {
+  font-size: 38px;
+  color: DarkRed;
+}
+h1 { /* Header 1 */
+  font-size: 20px;
+  color: DarkBlue;
+}
+h2 { /* Header 2 */
+  font-size: 18px;
+  color: DarkBlue;
+}
+h3 { /* Header 3 */
+  font-size: 16px;
+  color: DarkBlue;
+}
+code.r{ /* Code block */
+    font-size: 12px;
+}
+pre { /* Code block - determines code spacing between lines */
+    font-size: 14px;
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Use DIEM to clean up cellranger snRNA-seq raw data and compare with the cellranger filtered data
+
+# Working directory:
+```{r,message=FALSE,warning=FALSE}
+print(getwd())
+```
+
+# Check required packages
+```{r,message=FALSE,warning=FALSE}
+# function for installing needed packages
+installpkg <- function(x){
+    r = getOption("repos")
+    r["CRAN"] = "http://cran.us.r-project.org"
+    options(repos = r)
+    if(x %in% rownames(installed.packages())==FALSE) {
+        if(x %in% rownames(available.packages())==FALSE) {
+            if (!requireNamespace("BiocManager", quietly = TRUE))
+               install.packages("BiocManager")
+               BiocManager::install(x,ask = FALSE)
+        } else {
+            install.packages(x)
+        }
+        paste(x, "package is installed...")
+    } else {
+        paste(x,"package already installed...")
+    }
+}
+
+# install necessary packages
+required_packages  <- c('ggplot2','diem','Seurat')
+lapply(required_packages,installpkg)
+```
+
+# Read in filtered count data
+```{r,message=FALSE,warning=FALSE}
+library(diem)
+library(Seurat)
+counts_f <- read_10x("filtered_feature_bc_matrix")
+sce_f <- create_SCE(counts_f)
+ncol(counts_f)
+nrow(counts_f)
+```
+
+# Read in raw count data
+```{r,message=FALSE,warning=FALSE}
+counts <- read_10x("raw_feature_bc_matrix")
+sce <- create_SCE(counts)
+ncol(counts)
+nrow(counts)
+```
+
+# Add MT% (mitochondria) and MALAT1% (nuclear-localized lincRNA)
+```{r,message=FALSE,warning=FALSE}
+mt_genes <- grep(pattern="^mt-", x=rownames(sce@gene_data), ignore.case=TRUE, value=TRUE)
+sce <- get_gene_pct(x = sce, genes=mt_genes, name="pct.mt")
+malat <- grep(pattern="^malat1$", x=rownames(sce@gene_data), ignore.case=TRUE, value=TRUE)
+sce <- get_gene_pct(x = sce, genes=malat, name="MALAT1")
+```
+
+# Plot total counts ranked
+```{r,message=FALSE,warning=FALSE}
+library(ggplot2)
+#cellranger filtered counts
+barcode_rank_plot(sce_f)
+#cellranger raw counts
+barcode_rank_plot(sce)
+```
+
+# DIEM steps
+```{r,message=FALSE,warning=FALSE}
+sce <- set_debris_test_set(sce)
+sce <- filter_genes(sce)
+sce <- get_pcs(sce)
+sce <- init(sce)
+sce <- run_em(sce)
+sce <- assign_clusters(sce)
+sce <- estimate_dbr_score(sce)
+```
+
+# Call targets using debris score for single-nucleus data
+```{r,message=FALSE,warning=FALSE}
+sce <- call_targets(sce, thresh_score = 0.5)
+seur <- convert_to_seurat(sce)
+seur
+```
+
+# Get final cleaned cell barcodes for cellranger reanalysis
+```{r,message=FALSE,warning=FALSE}
+counts2 <- counts_f[,colnames(counts_f)%in%colnames(seur)]
+ncol(counts2)
+barcode <- colnames(counts2)
+barcode <- as.data.frame(barcode)
+colnames(barcode) <- "Barcode"
+barcode $ Barcode <- paste(barcode $ Barcode,"-1",sep="")
+write.csv(barcode,"barcode.csv",row.names=F,quote = F)
+                    
+save.image("diem.Rdata")
+```
+
+

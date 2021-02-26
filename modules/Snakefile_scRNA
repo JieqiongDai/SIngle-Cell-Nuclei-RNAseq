@@ -1,0 +1,111 @@
+#rule mkfastq:
+#    input:
+#          raw + "RTAComplete.txt"
+#    output:
+#          fastq + "Reports/html/Report.css"
+#    threads: 24
+#    shell:
+#          """
+#          ulimit -u 10240 -n 16384 2>log/ulimit.err
+#          dos2unix {table}
+#          cellranger mkfastq --qc --run={raw} --csv={table} --output-dir={fastq} 2>{run}log/mkfastq.err
+#          """
+
+rule cellranger_count:
+    input:
+          #rules.mkfastq.output,
+          scRNA_ref
+    output:
+          out + "{sample}/outs/possorted_genome_bam.bam",
+          out + "{sample}/outs/possorted_genome_bam.bam.bai",
+          out + "{sample}/outs/cloupe.cloupe",
+          out + "{sample}/outs/web_summary.html",
+          out + "{sample}/outs/filtered_feature_bc_matrix/matrix.mtx.gz",
+          out + "{sample}/outs/filtered_feature_bc_matrix.h5"
+    threads: 8
+    shell:
+          """
+          ulimit -Su 10240 -n 16384
+          cd {out}
+          rm -r {wildcards.sample}
+          cellranger count --id={wildcards.sample} --transcriptome={scRNA_ref} --fastqs={fastq}{flowcell}/{wildcards.sample} --localcores=6 --localmem=128 2>{run}log/{wildcards.sample}_count.err
+          """
+
+rule count_matrix:
+    input:
+          out + "{sample}/outs/filtered_feature_bc_matrix/matrix.mtx.gz"
+    output:
+          out + "{sample}/outs/filtered_feature_bc_matrix.csv"
+    threads: 2
+    shell:
+          """
+          cd {out}{wildcards.sample}/outs
+          Rscript {run}script/count_matrix.R 2>{run}log/{wildcards.sample}_count_matrix.err
+          """
+
+rule link:
+    input:
+          out + "{sample}/outs/possorted_genome_bam.bam",
+          out + "{sample}/outs/possorted_genome_bam.bam.bai",
+          out + "{sample}/outs/cloupe.cloupe",
+          out + "{sample}/outs/web_summary.html",
+          out + "{sample}/outs/filtered_feature_bc_matrix.csv"
+    output:
+          out + "/link/bam/{sample}_possorted_genome_bam.bam",
+          out + "link/bam/{sample}_possorted_genome_bam.bam.bai",
+          out + "link/summary/{sample}_web_summary.html",
+          out + "link/counts/{sample}_filtered_feature_bc_matrix.csv"
+    threads: 2
+    shell:
+          """
+          ln -s {input[0]} {output[0]} 2>log/{wildcards.sample}_link_bam.err
+          ln -s {input[1]} {output[1]} 2>log/{wildcards.sample}_link_bai.err
+          ln -s {input[2]} {output[2]} 2>log/{wildcards.sample}_link_loup.err
+          ln -s {input[3]} {output[3]} 2>log/{wildcards.sample}_link_summary.err
+          ln -s {input[4]} {output[4]} 2>log/{wildcards.sample}_link_count.err
+          """
+
+rule diem:
+    input:
+          out + "{sample}/outs/filtered_feature_bc_matrix.csv"
+    output:
+          out + "{sample}/outs/diem.html",
+          out + "{sample}/outs/barcode.csv"
+    threads:2
+    shell:
+          """
+          cd {out}{wildcards.sample}/outs
+          cp {run}script/diem.Rmd ./
+          Rscript -e "rmarkdown::render('diem.Rmd', output_file='diem.html')" 2>{run}log/{wildcards.sample}_diem.err
+          """
+
+rule reanalysis:
+    input:
+          out + "{sample}/outs/barcode.csv",
+          out + "{sample}/outs/filtered_feature_bc_matrix.h5"
+    output:
+          out + "reanalysis/{sample}/outs/web_summary.html",
+          out + "reanalysis/{sample}/outs/cloupe.cloupe",
+          out + "reanalysis/{sample}/outs/filtered_feature_bc_matrix.h5"
+    threads: 8
+    shell:
+          """
+          ulimit -Su 10240 -n 16384
+          cd {out}reanalysis/
+          rm -r {wildcards.sample}
+          cellranger reanalyze --id={wildcards.sample} --matrix={input[1]} --barcodes={input[0]} --localcores=6 --localmem=128 2>{run}log/{wildcards.sample}_reanalysis.err
+          """
+
+rule link_reanalysis:
+    input:
+          out + "reanalysis/{sample}/outs/web_summary.html",
+          out + "reanalysis/{sample}/outs/cloupe.cloupe"
+    output:
+          out + "reanalysis/link/summary/{sample}_web_summary.html",
+          out + "reanalysis/link/loup/{sample}_cloupe.cloupe"
+    threads: 1
+    shell:
+          """
+          ln -s {input[0]} {output[0]} 2>log/{wildcards.sample}_link_reanalysis_summary.err
+          ln -s {input[1]} {output[1]} 2>log/{wildcards.sample}_link_reanalysis_loup.err
+          """

@@ -1,0 +1,199 @@
+---
+title: "conicsmat"
+author: "Jieqiong Dai"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+      html_document:
+        code_folding: hide
+        toc: true
+        toc_float: true
+        
+---
+
+<style type="text/css">
+
+body{ /* Normal  */
+      font-size: 12px;
+  }
+td {  /* Table  */
+  font-size: 12px;
+}
+h1.title {
+  font-size: 38px;
+  color: DarkRed;
+}
+h1 { /* Header 1 */
+  font-size: 20px;
+  color: DarkBlue;
+}
+h2 { /* Header 2 */
+  font-size: 18px;
+  color: DarkBlue;
+}
+h3 { /* Header 3 */
+  font-size: 16px;
+  color: DarkBlue;
+}
+code.r{ /* Code block */
+    font-size: 12px;
+}
+pre { /* Code block - determines code spacing between lines */
+    font-size: 14px;
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Check required packages
+```{r,message=FALSE,warning=FALSE}
+# function for installing needed packages
+installpkg <- function(x){
+    r = getOption("repos")
+    r["CRAN"] = "http://cran.us.r-project.org"
+    options(repos = r)
+    if(x %in% rownames(installed.packages())==FALSE) {
+        if(x %in% rownames(available.packages())==FALSE) {
+            if (!requireNamespace("BiocManager", quietly = TRUE))
+               install.packages("BiocManager")
+               BiocManager::install(x,ask = FALSE)
+        } else {
+            install.packages(x)
+        }
+        paste(x, "package is installed...")
+    } else {
+        paste(x,"package already installed...")
+    }
+}
+
+# install necessary packages
+required_packages  <- c('data.table','edgeR','stringr','CONICSmat','Seurat')
+lapply(required_packages,installpkg)
+```
+
+# Read in Seurat corrected counts data of all genes
+```{r,message=FALSE,warning=FALSE}
+library(data.table)
+system.time(data <- (fread("../seurat/corrected_counts_data_all_genes.csv",header=T)))
+data <- as.data.frame(data)
+rownames(data) <- data $V1
+data <- data[,2:ncol(data)]
+data <- as.matrix(data)
+```
+
+# Normalize counts: log2(CPM/10+1) 
+```{r,message=FALSE,warning=FALSE}
+library(edgeR)
+cpm <- cpm(data,log=F)
+nor_data <- log2(cpm/10+1)
+library(stringr) 
+colnames(nor_data)<-str_replace_all(colnames(nor_data),"\\.","-")
+```
+
+# Read in chromosome are pisitions
+```{r,message=FALSE,warning=FALSE}
+regions=read.table("/data/CGR_10X/reference/cytoband/chromosome_arm_positions_grch38.txt",sep="\t",row.names = 1,header = T)
+```
+
+# Obtain the chromosomal positions of genes in the expression matrix; Filter uniformative genes. These are genes which are expressed in only very few cells (default >5 cells)
+```{r,message=FALSE,warning=FALSE}
+library(CONICSmat)
+gene_pos=getGenePositions(rownames(nor_data))
+nor_data2 <- filterMatrix(nor_data,gene_pos[,"hgnc_symbol"],minCells=5)
+```
+
+# Calculate a normalization factor for each cell and determine if the average gene expression any of the regions show a bimodal distribution across cells.Important: The tool only calculates results for regions harboring more than 100 expressed genes (as defined by the initial filtering step) to make sure the predictions are not influenced by a few deferentially expressed genes in a small region.
+```{r,message=FALSE,warning=FALSE,results='hide'}
+normFactor=calcNormFactors(nor_data2)
+l=plotAll(nor_data2,normFactor,regions,gene_pos,"CNVs")
+l <- l[order(rownames(l)),]
+write.csv(l,"conicsmat_posterior_probabilites.csv",quote = F)
+```
+
+# Filter uninformative, noisy regions based on the results of the likelihood ratio test and the BIC for each region.
+```{r,message=FALSE,warning=FALSE}
+lrbic=read.table("CNVs_BIC_LR.txt",sep="\t",header=T,row.names=1,check.names=F)
+candRegions=rownames(lrbic)[which(lrbic[,"BIC difference"]>5 & lrbic[,"LRT adj. p-val"]<0.01)]
+```
+
+# Read in seurat and singleR data
+```{r,message=FALSE,warning=FALSE}
+library(Seurat)
+load("../combine/combine.Rdata")
+```
+
+# Heatmap of the posterior probabilities of cells for component2 of each CNV region. Here, component2 is defined as the component with the larger mean. Therefore cells with a higher expression at that locus will appear in red, cells with a lower expression in blue. Posterior probabilities are given as a row-wise z-score.
+
+## Cluster number = 2 
+
+Note: legand "patients" refers to the seurat clusters
+```{r,message=FALSE,warning=FALSE}
+hi1=plotHistogram(l[,candRegions],nor_data2,clusters=2,zscoreThreshold=4,patients = seurat@meta.data$seurat_clusters)
+hi1=plotHistogram(l[,candRegions],nor_data2,clusters=2,zscoreThreshold=4,patients = seurat@meta.data$singleR.celltype)
+```
+## Cluster number = seurat cluster number
+```{r,message=FALSE,warning=FALSE}
+n <- length(levels(seurat$seurat_clusters))
+hi2=plotHistogram(l[,candRegions],nor_data2,clusters=n,zscoreThreshold=4,patients = seurat@meta.data$seurat_clusters)
+hi2=plotHistogram(l[,candRegions],nor_data2,clusters=n,zscoreThreshold=4,patients = seurat@meta.data$singleR.celltype)
+write.table(hi2,"conicsmat_cluster.csv",col.names=F,quote = F,sep=",")
+```
+
+## Add conicsmat CNV and cluster information into seurat
+```{r,message=FALSE,warning=FALSE}
+seurat@meta.data$conicsmat_cluster <- hi2
+seurat@meta.data <- cbind(seurat@meta.data,l[,candRegions])
+```
+
+# Tsne plot annotated with conicsmat clusters
+```{r,message=FALSE,warning=FALSE}
+seurat3 <-seurat
+Idents(seurat3) <- "conicsmat_cluster"
+DimPlot(seurat3,reduction="tsne") 
+```
+
+# Umap plot annotated with conicsmat clusters
+```{r,message=FALSE,warning=FALSE}
+DimPlot(seurat3,reduction="umap")
+```
+
+# Tsne plot annotated with conicsmat CNVs
+```{r,message=FALSE,warning=FALSE}
+pdf("tsne_cnv.pdf")
+for (i in candRegions)
+{
+a <-FeaturePlot(seurat,features = i,reduction="tsne")
+plot(a)
+}
+dev.off()
+```
+<button class="btn btn-primary" data-toggle="collapse" data-target="#Spectra">Open tsne_cnv.pdf</button> 
+<div id="Spectra" class="collapse">    
+<object data="tsne_cnv.pdf" width="750px" height="750px">
+    <embed src="tsne_cnv.pdf">
+    </embed>
+</object>
+</div>
+
+
+# Umap plot annotated with conicsmat cCNVs
+```{r,message=FALSE,warning=FALSE}
+
+pdf("umap_cnv.pdf")
+for (i in candRegions)
+{
+b <-FeaturePlot(seurat,features = i,reduction="umap")
+plot(b)
+}
+dev.off()
+
+save.image("conicsmat.Rdata")
+```
+<button class="btn btn-primary" data-toggle="collapse" data-target="#Spectra2">Open umap_cnv.pdf</button> 
+<div id="Spectra2" class="collapse">    
+<object data="umap_cnv.pdf" width="750px" height="750px">
+    <embed src="umap_cnv.pdf">
+    </embed>
+</object>
+</div>

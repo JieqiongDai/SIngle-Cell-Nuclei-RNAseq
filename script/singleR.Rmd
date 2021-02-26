@@ -1,0 +1,120 @@
+---
+title: "singleR"
+author: "Jieqiong Dai"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+      html_document:
+        code_folding: hide
+        toc: true
+        toc_float: true
+        
+---
+
+<style type="text/css">
+
+body{ /* Normal  */
+      font-size: 12px;
+  }
+td {  /* Table  */
+  font-size: 12px;
+}
+h1.title {
+  font-size: 38px;
+  color: DarkRed;
+}
+h1 { /* Header 1 */
+  font-size: 20px;
+  color: DarkBlue;
+}
+h2 { /* Header 2 */
+  font-size: 18px;
+  color: DarkBlue;
+}
+h3 { /* Header 3 */
+  font-size: 16px;
+  color: DarkBlue;
+}
+code.r{ /* Code block */
+    font-size: 12px;
+}
+pre { /* Code block - determines code spacing between lines */
+    font-size: 14px;
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Working directory:
+```{r,message=FALSE,warning=FALSE}
+print(getwd())
+```
+
+# Check required packages
+```{r,message=FALSE,warning=FALSE}
+# function for installing needed packages
+installpkg <- function(x){
+    r = getOption("repos")
+    r["CRAN"] = "http://cran.us.r-project.org"
+    options(repos = r)
+    if(x %in% rownames(installed.packages())==FALSE) {
+        if(x %in% rownames(available.packages())==FALSE) {
+            if (!requireNamespace("BiocManager", quietly = TRUE))
+               install.packages("BiocManager")
+               BiocManager::install(x,ask = FALSE)
+        } else {
+            install.packages(x)
+        }
+        paste(x, "package is installed...")
+    } else {
+        paste(x,"package already installed...")
+    }
+}
+
+# install necessary packages
+required_packages  <- c('ggplot2','data.table','ExperimentHub','SingleR','rmarkdown','celldex')
+lapply(required_packages,installpkg)
+```
+
+# Read in Seurat log normalized (not scaled) counts data of variable genes
+```{r,message=FALSE,warning=FALSE}
+library(data.table)
+system.time(data <- (fread("../seurat/log_normalized_data_var_genes.csv",header=T)))
+data <- as.data.frame(data)
+rownames(data) <- data $V1
+data <- data[,2:ncol(data)]
+data <- as.matrix(data)
+```
+
+# Harmonizing labels of references: probabilities close to 1 indicate there is a 1:1 relation between that pair of labels; on the other hand, an all-zero probability vector indicates that a label is unique to a particular reference.
+```{r,message=FALSE,warning=FALSE}
+library(ExperimentHub)
+setExperimentHubOption("PROXY", Sys.getenv("http_proxy"))
+library(SingleR)
+library(celldex)
+hpca.se <- celldex::HumanPrimaryCellAtlasData()
+hpca.se
+bp.se <- BlueprintEncodeData()
+bp.se
+matched <- matchReferences(bp.se, hpca.se,
+    bp.se$label.main, hpca.se$label.main)
+pheatmap::pheatmap(matched, col=viridis::plasma(100))
+```
+
+# Annotate data using singleR with multiple built-in references by comparing scores across the union of markers
+```{r,message=FALSE,warning=FALSE}
+pred.combined <- SingleR(test = data, ref = list(BP=bp.se, HPCA=hpca.se), labels = list(bp.se$label.main,hpca.se$label.main),de.method="wilcox")
+library(rmarkdown)
+paged_table(as.data.frame(pred.combined))
+write.csv(pred.combined,"singleR.csv",quote = F) 
+```
+
+# Annotation visualization. Low-quality assignments are replaced with NA.
+```{r,message=FALSE,warning=FALSE}
+plotScoreHeatmap(pred.combined,scores.use = 0,calls.use=0)
+plotScoreHeatmap(pred.combined,scores.use = 1,calls.use=1)
+plotScoreHeatmap(pred.combined,scores.use = 2,calls.use=2)
+
+save.image("singler.Rdata")
+```

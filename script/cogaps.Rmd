@@ -1,0 +1,154 @@
+---
+title: "CoGAPS"
+author: "Jieqiong Dai"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+      html_document:
+        code_folding: hide
+        toc: true
+        toc_float: true
+        pandoc_args: [
+         "+RTS", "-k16g",
+         "-RTS"
+         ]
+        
+---
+
+<style type="text/css">
+
+body{ /* Normal  */
+      font-size: 12px;
+  }
+td {  /* Table  */
+  font-size: 12px;
+}
+h1.title {
+  font-size: 38px;
+  color: DarkRed;
+}
+h1 { /* Header 1 */
+  font-size: 20px;
+  color: DarkBlue;
+}
+h2 { /* Header 2 */
+  font-size: 18px;
+  color: DarkBlue;
+}
+h3 { /* Header 3 */
+  font-size: 16px;
+  color: DarkBlue;
+}
+code.r{ /* Code block */
+    font-size: 12px;
+}
+pre { /* Code block - determines code spacing between lines */
+    font-size: 14px;
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Working directory:
+```{r,message=FALSE,warning=FALSE}
+print(getwd())
+```
+
+# Check required packages
+```{r,message=FALSE,warning=FALSE}
+# function for installing needed packages
+installpkg <- function(x){
+    r = getOption("repos")
+    r["CRAN"] = "http://cran.us.r-project.org"
+    options(repos = r)
+    if(x %in% rownames(installed.packages())==FALSE) {
+        if(x %in% rownames(available.packages())==FALSE) {
+            if (!requireNamespace("BiocManager", quietly = TRUE))
+               install.packages("BiocManager")
+               BiocManager::install(x,ask = FALSE)
+        } else {
+            install.packages(x)
+        }
+        paste(x, "package is installed...")
+    } else {
+        paste(x,"package already installed...")
+    }
+}
+
+# install necessary packages
+required_packages  <- c('ggplot2','Seurat','SeuratWrappers','plotly','CoGAPS','stringr')
+lapply(required_packages,installpkg)
+```
+
+# Using Seurat wrapped CoGAPS to identify seurat generatd cell clusters, display first page of the figures
+```{r,message=FALSE,warning=FALSE,results='hide'}
+library(Seurat)
+library(SeuratWrappers)
+library(CoGAPS)
+library(ggplot2)
+load("../seurat/seurat.Rdata")
+n <- length(levels(seurat$seurat_clusters))
+params <- CogapsParams(singleCell = TRUE, sparseOptimization = TRUE, seed = 66, nIterations = 5000, 
+    nPatterns = n+1, distributed = "genome-wide")
+params <- setDistributedParams(params, nSets = 3)
+cog <-RunCoGAPS(seurat, params = params)
+write.csv(cog@reductions$CoGAPS[],"cogaps_cluster_featureloadings.csv",quote=F)
+write.csv(cog@reductions$CoGAPS[[]],"cogaps_cluster_samplefactors.csv",quote=F)
+pdf("cogaps_cluster.pdf")
+p <- length(colnames(cog@reductions$CoGAPS))
+for (i in 1:p)
+{
+a <- paste("CoGAPS_",i,sep="")
+b<- VlnPlot(cog,features=a)
+plot(b)
+}
+dev.off()
+```
+<button class="btn btn-primary" data-toggle="collapse" data-target="#Spectra">Open cogaps_cluster.pdf</button> 
+<div id="Spectra" class="collapse">    
+<object data="cogaps_cluster.pdf" width="750px" height="750px">
+    <embed src="cogaps_cluster.pdf">
+    </embed>
+</object>
+</div>
+
+
+# Using Seurat wrapped CoGAPS to identify SingleR generatd cell types
+```{r,message=FALSE,warning=FALSE,results='hide'}
+ano <- read.csv("../singler/singleR.csv",header=T,row.names=1)
+library(stringr) 
+rownames(ano)<-str_replace_all(rownames(ano),"\\.","-")
+ano <- ano[order(rownames(ano)),]
+seurat@meta.data$singleR.celltype <- ano$labels
+n <- length(unique(seurat@meta.data$singleR.celltype))
+params2 <- CogapsParams(singleCell = TRUE, sparseOptimization = TRUE, seed = 66, nIterations = 5000, 
+    nPatterns = n+1, distributed = "genome-wide")
+params2 <- setDistributedParams(params2, nSets = 3)
+seurat2 <-seurat
+Idents(seurat2) <- "singleR.celltype"
+cog2 <-RunCoGAPS(seurat2, params = params2)
+write.csv(cog2@reductions$CoGAPS[],"cogaps__celltype_featureloadings.csv",quote=F)
+write.csv(cog2@reductions$CoGAPS[[]],"cogaps_celltype_samplefactors.csv",quote=F)
+pdf("cogaps_celltype.pdf")
+p <- length(colnames(cog2@reductions$CoGAPS))
+for (i in 1:p)
+{
+a <- paste("CoGAPS_",i,sep="")
+b <- VlnPlot(cog2,features=a) + theme(legend.position = 'none')
+plot(b)
+}
+dev.off()
+
+```
+<button class="btn btn-primary" data-toggle="collapse" data-target="#Spectra2">Open cogaps_celltype.pdf</button> 
+<div id="Spectra2" class="collapse">    
+<object data="cogaps_celltype.pdf" width="750px" height="750px">
+    <embed src="cogaps_celltype.pdf">
+    </embed>
+</object>
+</div>
+
+```{r,message=FALSE,warning=FALSE}
+save.image("cogaps.Rdata")
+```

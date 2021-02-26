@@ -1,0 +1,101 @@
+rule seurat:
+    input:
+          out + "reanalysis/{sample}/outs/filtered_feature_bc_matrix.h5"
+    output:
+          out + "reanalysis/{sample}/outs/seurat/seurat.html",
+          out + "reanalysis/{sample}/outs/seurat/log_normalized_data_var_genes.csv",
+          out + "reanalysis/{sample}/outs/seurat/cluster.csv"
+    threads: 2
+    shell:
+          """
+          cd {out}reanalysis/{wildcards.sample}/outs/seurat/
+          cp {run}/script/seurat.Rmd ./
+          export TMPDIR=/lscratch/$SLURM_JOB_ID
+          Rscript -e "rmarkdown::render('seurat.Rmd', output_file='seurat.html')" 2>{run}log/{wildcards.sample}_seurat.err
+          """
+
+rule singleR:
+    input:
+          out + "reanalysis/{sample}/outs/seurat/log_normalized_data_var_genes.csv"
+    output:
+          out + "reanalysis/{sample}/outs/singler/singleR.html",
+          out + "reanalysis/{sample}/outs/singler/singleR.csv"
+    threads: 2
+    shell:
+          """
+          cd {out}reanalysis/{wildcards.sample}/outs/singler/
+          cp {run}script/singleR.Rmd ./
+          export TMPDIR=/lscratch/$SLURM_JOB_ID
+          export http_proxy=http://dtn${{HOSTNUM}}-e0:${{SQUID_PORT}}
+          export https_proxy=http://dtn${{HOSTNUM}}-e0:${{SQUID_PORT}}
+          Rscript -e "rmarkdown::render('singleR.Rmd', output_file='singleR.html')" 2>{run}log/{wildcards.sample}_singler.err
+          """
+
+rule cogaps:
+    input:
+          out + "reanalysis/{sample}/outs/seurat/seurat.html",
+          out + "reanalysis/{sample}/outs/singler/singleR.csv"
+    output:
+          out + "reanalysis/{sample}/outs/cogaps/cogaps.html"
+    threads: 2
+    shell:
+          """
+          cd {out}reanalysis/{wildcards.sample}/outs/cogaps/
+          cp {run}script/cogaps.Rmd ./
+          export TMPDIR=/lscratch/$SLURM_JOB_ID
+          Rscript -e "rmarkdown::render('cogaps.Rmd', output_file='cogaps.html')" 2>{run}log/{wildcards.sample}_cogaps.err
+          """
+
+rule combine:
+    input:
+          out + "reanalysis/{sample}/outs/seurat/cluster.csv",
+          out + "reanalysis/{sample}/outs/singler/singleR.csv",
+          out + "reanalysis/{sample}/outs/cogaps/cogaps.html"
+    output:
+          out + "reanalysis/{sample}/outs/combine/combine.html"
+    threads: 2
+    shell:
+          """
+          cd {out}reanalysis/{wildcards.sample}/outs/combine/
+          cp {run}script/combine.Rmd ./
+          cp ../cogaps/*.pdf ./
+          export TMPDIR=/lscratch/$SLURM_JOB_ID
+          Rscript -e "rmarkdown::render('combine.Rmd', output_file='combine.html')" 2>{run}log/{wildcards.sample}_combine.err
+          """
+
+rule conicsmat:
+    input:
+          rules.combine.output
+    output:
+          out + "reanalysis/{sample}/outs/conicsmat/conicsmat.html"
+    threads:2
+    shell:
+          """
+          cd {out}reanalysis/{wildcards.sample}/outs/conicsmat/
+          cp {run}script/conicsmat.Rmd ./
+          export TMPDIR=/lscratch/$SLURM_JOB_ID
+          Rscript -e "rmarkdown::render('conicsmat.Rmd', output_file='conicsmat.html')" 2>{run}log/{wildcards.sample}_conicsmat.err
+          """
+
+rule link_downstream:
+    input:
+          out + "reanalysis/{sample}/outs/seurat/seurat.html",
+          out + "reanalysis/{sample}/outs/singler/singleR.html",
+          out + "reanalysis/{sample}/outs/combine/combine.html",
+          out + "reanalysis/{sample}/outs/cogaps/cogaps.html",
+          out + "reanalysis/{sample}/outs/conicsmat/conicsmat.html"
+    output:
+          out + "reanalysis/link/seurat/{sample}_seurat.html",
+          out + "reanalysis/link/singler/{sample}_singleR.html",
+          out + "reanalysis/link/combine/{sample}_combine.html",
+          out + "reanalysis/link/cogaps/{sample}_cogaps.html",
+          out + "reanalysis/link/conicsmat/{sample}_conicsmat.html"
+    threads:2
+    shell:
+          """
+          ln -s {input[0]} {output[0]} 2>log/{wildcards.sample}_link_seurat.err
+          ln -s {input[1]} {output[1]} 2>log/{wildcards.sample}_link_singler.err
+          ln -s {input[2]} {output[2]} 2>log/{wildcards.sample}_link_combine.err
+          ln -s {input[3]} {output[3]} 2>log/{wildcards.sample}_link_cogaps.err
+          ln -s {input[4]} {output[4]} 2>log/{wildcards.sample}_link_conicsmat.err
+          """

@@ -1,0 +1,193 @@
+---
+title: "inferCNV"
+author: "Jieqiong Dai"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+      html_document:
+        code_folding: hide
+        toc: true
+        toc_float: true
+
+params: 
+      genes: ''
+---
+
+<style type="text/css">
+
+body{ /* Normal  */
+      font-size: 12px;
+  }
+td {  /* Table  */
+  font-size: 12px;
+}
+h1.title {
+  font-size: 38px;
+  color: DarkRed;
+}
+h1 { /* Header 1 */
+  font-size: 20px;
+  color: DarkBlue;
+}
+h2 { /* Header 2 */
+  font-size: 18px;
+  color: DarkBlue;
+}
+h3 { /* Header 3 */
+  font-size: 16px;
+  color: DarkBlue;
+}
+code.r{ /* Code block */
+    font-size: 12px;
+}
+pre { /* Code block - determines code spacing between lines */
+    font-size: 14px;
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Working directory:
+```{r,message=FALSE,warning=FALSE}
+print(getwd())
+```
+
+# Check required packages
+```{r,message=FALSE,warning=FALSE}
+# function for installing needed packages
+installpkg <- function(x){
+    r = getOption("repos")
+    r["CRAN"] = "http://cran.us.r-project.org"
+    options(repos = r)
+    if(x %in% rownames(installed.packages())==FALSE) {
+        if(x %in% rownames(available.packages())==FALSE) {
+            if (!requireNamespace("BiocManager", quietly = TRUE))
+               install.packages("BiocManager")
+               BiocManager::install(x,ask = FALSE)
+        } else {
+            install.packages(x)
+        }
+        paste(x, "package is installed...")
+    } else {
+        paste(x,"package already installed...")
+    }
+}
+
+# install necessary packages
+required_packages  <- c('ggplot2','data.table','Seurat','infercnv','stringr','NGCHM','infercnvNGCHM','tsvio','RColorBrewer')
+lapply(required_packages,installpkg)
+```
+
+# Read in Seurat corrected counts data of all genes including both tumor and normal cells
+```{r,message=FALSE,warning=FALSE}
+library(data.table)
+system.time(data <- (fread("tumor_normal_corrected_counts_data_all_genes.csv",header=T)))
+data <- as.data.frame(data)
+rownames(data) <- data $V1
+data <- data[,2:ncol(data)]
+data <- as.matrix(data)
+library(stringr) 
+colnames(data)<-str_replace_all(colnames(data),"\\.","-")
+```
+
+# Read in sample typle annotaion
+```{r,message=FALSE,warning=FALSE}
+sample <- read.csv("tumor_normal_sample.csv",row.names=1)
+```
+
+# Read in gene order file
+```{r,message=FALSE,warning=FALSE}
+genes <- as.character(params$genes)
+gene <- read.table(genes)
+gene <- gene[!duplicated(gene$V1),]
+colnames(gene) <- c("gene","chr","start","stop")
+rownames(gene) <- gene$gene
+gene <- gene[,2:4]
+```
+
+# Create the inferCNV object: requires 1) a raw counts matrix of single-cell RNA-Seq expression 2) an annotations file which indicates which cells are tumor and which are normal 3) a gene/chromosome positions file
+```{r,message=FALSE,warning=FALSE,results='hide'}
+library(infercnv)
+infercnv_obj = CreateInfercnvObject(raw_counts_matrix=data,gene_order_file = gene,annotations_file = sample,ref_group_names=c("N"))
+```
+
+# Run the analysis
+```{r,message=FALSE,warning=FALSE,results='hide'}
+out_dir = "inferCNV"
+infercnv_obj = infercnv::run(
+    infercnv_obj,
+    cutoff=0.1, # cutoff=1 works well for Smart-seq2, and cutoff=0.1 works well for 10x Genomics
+    out_dir=out_dir,
+    analysis_mode="subclusters", 
+    tumor_subcluster_partition_method='random_trees',
+    tumor_subcluster_pval=0.05,
+    num_threads=4,    
+    cluster_by_groups=T, 
+    plot_steps=FALSE,
+    denoise=TRUE,
+    sd_amplifier=3,  # sets midpoint for logistic
+    noise_logistic=TRUE, # turns gradient filtering on
+    HMM=TRUE,
+    no_prelim_plot=TRUE,
+    png_res=60
+)
+save.image("infercnv.Rdata")
+```
+
+# Applying add-on median filtering to smooth the visual output of inferCNV
+```{r,message=FALSE,warning=FALSE,results='hide'}
+infercnv_obj_medianfiltered = infercnv::apply_median_filtering(infercnv_obj)
+infercnv::plot_cnv(infercnv_obj_medianfiltered, 
+                   out_dir=out_dir,
+                   output_filename='infercnv.median_filtered', 
+                   x.range="auto",
+                   x.center=1,
+                   title = "infercnv", 
+                   color_safe_pal = FALSE)
+
+save.image("infercnv.Rdata")
+```
+
+# Generate interactive heatmap file using NextGenHeatMap. Load the file into NGCHM viewer for visualization: https://www.ngchm.net/Downloads/ngChmApp.html
+```{r,message=FALSE,warning=FALSE,results='hide'}
+library(NGCHM)
+library(infercnvNGCHM)
+library(tsvio)
+library(RColorBrewer)
+ngchm(infercnv_obj = infercnv_obj,out_dir = out_dir,path_to_shaidyMapGen = "/data/CGR_10X/software/NGCHM/ShaidyMapGen.jar",gene_symbol = "bio.gene.hugo")
+
+save.image("infercnv.Rdata")
+```     
+
+# Add tumor infercnv CNV and cluster information into seurat
+```{r,message=FALSE,warning=FALSE}
+library(Seurat)
+load("merge.Rdata")
+infercnv_final_df <- read.table(file = "inferCNV/infercnv.observation_groupings.txt",sep = " ", header = TRUE)
+infercnv_final_df <- infercnv_final_df[order(rownames(infercnv_final_df)),]
+merge_t <- subset(merge,sample.type=="T")
+merge_t@meta.data$infercnv_cluster <- infercnv_final_df$Dendrogram.Group
+merge_t<- SCTransform(merge_t, vars.to.regress = c("percent.mt","S.Score", "G2M.Score"), verbose = FALSE)
+```
+
+# PCA plot annotated with infercnv clusters
+```{r,message=FALSE,warning=FALSE}
+Idents(merge_t) <- "infercnv_cluster"
+merge_t <- RunPCA(merge_t, verbose = FALSE)
+DimPlot(merge_t,reduction="pca") 
+```
+
+# Tsne plot annotated with infercnv clusters
+```{r,message=FALSE,warning=FALSE}
+merge_t <- RunTSNE(merge_t, dims = 1:30, verbose = FALSE,seed.use = 66)
+DimPlot(merge_t,reduction="tsne") 
+```
+
+# Umap plot annotated with infercnv clusters
+```{r,message=FALSE,warning=FALSE}
+merge_t <- RunUMAP(merge_t, dims = 1:30, verbose = FALSE,seed.use = 66)
+DimPlot(merge_t,reduction="umap")
+
+save.image("infercnv.Rdata")
+```

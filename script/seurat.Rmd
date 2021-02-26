@@ -1,0 +1,207 @@
+---
+title: "seurat"
+author: "Jieqiong Dai"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+      html_document:
+        code_folding: hide
+        toc: true
+        toc_float: true
+        pandoc_args: [
+         "+RTS", "-k16g",
+         "-RTS"
+         ]                
+---
+
+<style type="text/css">
+
+body{ /* Normal  */
+      font-size: 12px;
+  }
+td {  /* Table  */
+  font-size: 12px;
+}
+h1.title {
+  font-size: 38px;
+  color: DarkRed;
+}
+h1 { /* Header 1 */
+  font-size: 20px;
+  color: DarkBlue;
+}
+h2 { /* Header 2 */
+  font-size: 18px;
+  color: DarkBlue;
+}
+h3 { /* Header 3 */
+  font-size: 16px;
+  color: DarkBlue;
+}
+code.r{ /* Code block */
+    font-size: 12px;
+}
+pre { /* Code block - determines code spacing between lines */
+    font-size: 14px;
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Working directory:
+```{r,message=FALSE,warning=FALSE}
+print(getwd())
+```
+
+# Check required packages
+```{r,message=FALSE,warning=FALSE}
+# function for installing needed packages
+installpkg <- function(x){
+    r = getOption("repos")
+    r["CRAN"] = "http://cran.us.r-project.org"
+    options(repos = r)
+    if(x %in% rownames(installed.packages())==FALSE) {
+        if(x %in% rownames(available.packages())==FALSE) {
+            if (!requireNamespace("BiocManager", quietly = TRUE))
+               install.packages("BiocManager")
+               BiocManager::install(x,ask = FALSE)
+        } else {
+            install.packages(x)
+        }
+        paste(x, "package is installed...")
+    } else {
+        paste(x,"package already installed...")
+    }
+}
+
+# install necessary packages
+required_packages  <- c('ggplot2','dplyr','Seurat','patchwork','rmarkdown')
+lapply(required_packages,installpkg)
+```
+
+# Load filter data form cellranger reanalysis (extra cell filtered by DIEM
+) and initialize the seurat object with the raw (non-normalized)
+```{r,message=FALSE,warning=FALSE}
+library(dplyr)
+library(Seurat)
+library(patchwork)
+data <- Read10X(data.dir = "../filtered_feature_bc_matrix")
+seurat <- CreateSeuratObject(counts = data, project = "snRNA", min.cells = 3, min.features = 200)
+seurat
+```
+
+# QC and further cell filtering: cells that have unique feature counts over 2,500 or less than 200;cells that have >5% mitochondrial counts
+```{r,message=FALSE,warning=FALSE}
+seurat[["percent.mt"]] <- PercentageFeatureSet(seurat, pattern = "^MT-")
+VlnPlot(seurat, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot1 <- FeatureScatter(seurat, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(seurat, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot1 + plot2
+seurat <- subset(seurat, subset = nFeature_RNA > 200 & nFeature_RNA < 2500 & percent.mt < 5)
+seurat
+```
+
+# Load cell cycle markers
+```{r,message=FALSE,warning=FALSE}
+s.genes <- cc.genes$s.genes
+s.genes
+g2m.genes <- cc.genes$g2m.genes
+g2m.genes
+```
+
+# Assign cell-cycle scores
+```{r,message=FALSE,warning=FALSE}
+seurat <- CellCycleScoring(seurat, s.features = s.genes, g2m.features = g2m.genes, set.ident = TRUE)
+library(rmarkdown)
+paged_table(as.data.frame(seurat[[]]))
+```
+
+# Visualize the distribution of cell cycle markers across
+```{r,message=FALSE,warning=FALSE}
+RidgePlot(seurat, features = c("PCNA", "TOP2A", "MCM6", "MKI67"), ncol = 2,log=T)
+```
+
+# Use new method sctransform to replace steps NormalizeData, ScaleData, and FindVariableFeatures in old versions
+, regresiing out heterogeneity associated with  cell cycle stage, or mitochondrial contamination
+
+Note: in differentiating processes (like murine hematopoiesis), where stem cells are quiescent and differentiated cells are proliferating (or vice versa), need to regress out the difference between the G2M and S phase scores which means that signals separating non-cycling cells and cycling cells will be maintained, but differences in cell cycle phase amongst proliferating cells (which are often uninteresting), will be regressed out of the data, using below code:
+
+seurat$CC.Difference <- seurat$S.Score - seurat$G2M.Score
+
+seurat<- SCTransform(seurat, vars.to.regress = c("percent.mt","CC.Difference"), verbose = FALSE)
+```{r,message=FALSE,warning=FALSE}
+seurat2<- SCTransform(seurat, vars.to.regress = c("percent.mt","S.Score", "G2M.Score"), return.only.var.genes = F,verbose = FALSE)
+write.csv(seurat2[["SCT"]]@scale.data,"scale_data_all_genes.csv",quote=F)
+write.csv(seurat2[["SCT"]]@data,"log_normalized_data_all_genes.csv",quote=F)
+write.csv(seurat2[["SCT"]]@counts,"corrected_counts_data_all_genes.csv",quote=F)
+seurat<- SCTransform(seurat, vars.to.regress = c("percent.mt","S.Score", "G2M.Score"), verbose = FALSE)
+write.csv(seurat[["SCT"]]@scale.data,"scale_data_var_genes.csv",quote=F)
+write.csv(seurat[["SCT"]]@data,"log_normalized_data_var_genes.csv",quote=F)
+```
+
+# Perform linear dimensional reduction by PCA
+```{r,message=FALSE,warning=FALSE}
+seurat <- RunPCA(seurat, verbose = FALSE)
+VizDimLoadings(seurat, dims = 1:2, reduction = "pca")
+DimPlot(seurat,reduction="pca")
+DimHeatmap(seurat, dims = 1, cells = 500, balanced = TRUE)
+DimHeatmap(seurat, dims = 1:15, cells = 500, balanced = TRUE)
+```
+
+# Determine the 'dimensionality' of the dataset
+```{r,message=FALSE,warning=FALSE}
+ElbowPlot(seurat)
+```
+
+# Cluster the cells using v graph-based clustering approach. Briefly, these methods embed cells in a graph structure - for example a K-nearest neighbor (KNN) graph, with edges drawn between cells with similar feature expression patterns, and then attempt to partition this graph into highly interconnected 'quasi-cliques' or 'communities'.
+```{r,message=FALSE,warning=FALSE}
+seurat <- FindNeighbors(seurat, dims = 1:30,verbose = FALSE)
+seurat <- FindClusters(seurat,verbose = FALSE)
+paged_table(as.data.frame(Idents(seurat)))
+write.table(Idents(seurat),"cluster.csv",sep=",",quote = F,col.names = F)
+```
+
+# PCA plot with cluster information
+```{r,message=FALSE,warning=FALSE}
+DimPlot(seurat,reduction="pca")
+```
+
+# Run non-linear dimensional reduction by UMAP
+```{r,message=FALSE,warning=FALSE}
+seurat <- RunUMAP(seurat, dims = 1:30, verbose = FALSE,seed.use = 66)
+DimPlot(seurat,reduction="umap")
+```
+
+# Run non-linear dimensional reduction by TSNE
+```{r,message=FALSE,warning=FALSE}
+seurat <- RunTSNE(seurat, dims = 1:30, verbose = FALSE,seed.use=66)
+DimPlot(seurat,reduction="tsne")
+```
+
+# Finding differentially expressed features (cluster biomarkers) for every cluster compared to all remaining cells, report only the positive ones (the default method is Wilcoxon rank sum test, other available methods include MAST, DESeq2, etc)
+
+Note: find all markers distinguishing a cluster from certain cluster(s) using below code:
+
+cluster0.markers <- FindMarkers(seurat, ident.1 = 0, ident.2 = c(1, 2), min.pct = 0.25)
+```{r,message=FALSE,warning=FALSE}
+seurat.markers <- FindAllMarkers(seurat, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+seurat.markers <- seurat.markers[order(seurat.markers$cluster, seurat.markers$p_val,-abs(seurat.markers$avg_logFC)),]
+paged_table(seurat.markers)
+write.csv(seurat.markers,"DE_lists.csv",quote=F)
+```
+
+# Visualizing example canonical marker expression
+```{r,message=FALSE,warning=FALSE}
+VlnPlot(seurat, features = c("CD8A", "GZMK", "CCL5", "S100A4", "ANXA1", "CCR7", "ISG15", "CD3D"), pt.size = 0.2, ncol = 4)
+FeaturePlot(seurat, features = c("CD8A", "GZMK", "CCL5", "S100A4", "ANXA1", "CCR7","ISG15", "CD3D"), pt.size = 0.2, ncol = 3)
+DotPlot(seurat, features = c("CD8A", "GZMK", "CCL5", "S100A4", "ANXA1", "CCR7","ISG15", "CD3D")) + RotatedAxis()
+```
+
+# Expression heatmap of top 10 markers (or all markers if less than 10) for each cluster
+```{r,message=FALSE,warning=FALSE}
+top10 <- seurat.markers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)
+DoHeatmap(seurat, features = top10$gene)
+saveRDS(seurat,"seurat.rds")
+save.image("seurat.Rdata")
+```

@@ -1,0 +1,152 @@
+---
+title: "combining of seurat, singleR and cogaps resuts"
+author: "Jieqiong Dai"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+      html_document:
+        code_folding: hide
+        toc: true
+        toc_float: true
+        pandoc_args: [
+         "+RTS", "-k16g",
+         "-RTS"
+         ]
+
+---
+
+<style type="text/css">
+
+body{ /* Normal  */
+      font-size: 12px;
+  }
+td {  /* Table  */
+  font-size: 12px;
+}
+h1.title {
+  font-size: 38px;
+  color: DarkRed;
+}
+h1 { /* Header 1 */
+  font-size: 20px;
+  color: DarkBlue;
+}
+h2 { /* Header 2 */
+  font-size: 18px;
+  color: DarkBlue;
+}
+h3 { /* Header 3 */
+  font-size: 16px;
+  color: DarkBlue;
+}
+code.r{ /* Code block */
+    font-size: 12px;
+}
+pre { /* Code block - determines code spacing between lines */
+    font-size: 14px;
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Working directory:
+```{r,message=FALSE,warning=FALSE}
+print(getwd())
+```
+
+# Check required packages
+```{r,message=FALSE,warning=FALSE}
+# function for installing needed packages
+installpkg <- function(x){
+    r = getOption("repos")
+    r["CRAN"] = "http://cran.us.r-project.org"
+    options(repos = r)
+    if(x %in% rownames(installed.packages())==FALSE) {
+        if(x %in% rownames(available.packages())==FALSE) {
+            if (!requireNamespace("BiocManager", quietly = TRUE))
+               install.packages("BiocManager")
+               BiocManager::install(x,ask = FALSE)
+        } else {
+            install.packages(x)
+        }
+        paste(x, "package is installed...")
+    } else {
+        paste(x,"package already installed...")
+    }
+}
+
+# install necessary packages
+required_packages  <- c('ggplot2','Seurat','rmarkdown','stringr')
+lapply(required_packages,installpkg)
+```
+
+# Read in Seurat data
+```{r,message=FALSE,warning=FALSE}
+library(Seurat)
+load("../seurat/seurat.Rdata")
+cl <- read.csv("../seurat/cluster.csv",header=F,row.names=1)
+cl <- cl[order(rownames(cl)),,drop=F]
+```
+
+# Read in SingleR cell annotation infomration
+```{r,message=FALSE,warning=FALSE}
+ano <- read.csv("../singler/singleR.csv",header=T,row.names=1)
+library(stringr) 
+rownames(ano)<-str_replace_all(rownames(ano),"\\.","-")
+ano <- ano[order(rownames(ano)),]
+seurat@meta.data$singleR.celltype <- ano$labels
+```
+
+# Integrate the cluster and  cell annotation infomration
+```{r,message=FALSE,warning=FALSE}
+group <- cbind(cl,ano$labels)
+colnames(group) <- c("cluster","estimated.cell.type")
+write.csv(group,"cluster_annotation.csv",quote = F)
+library(rmarkdown)
+paged_table(group)
+```
+
+# Plots annotated with clusters from Seurat
+
+## UMAP plot annotated with clusters from Seurat
+```{r,message=FALSE,warning=FALSE}
+library(ggplot2)
+DimPlot(seurat,reduction="umap")
+```
+## TSNE plot annotated with clusters from Seurat
+```{r,message=FALSE,warning=FALSE}
+DimPlot(seurat,reduction="tsne")
+```
+
+<button class="btn btn-primary" data-toggle="collapse" data-target="#Spectra">Cogaps patterns annotated with clusters from Seurat</button> 
+<div id="Spectra" class="collapse">    
+<object data="cogaps_cluster.pdf" width="750px" height="750px">
+    <embed src="cogaps_cluster.pdf">
+    </embed>
+</object>
+</div>
+
+# Plots annotated with cell types from SingleR
+
+## UMAP plot annotated with cell types from SingleR
+```{r,message=FALSE,warning=FALSE}
+seurat2 <-seurat
+Idents(seurat2) <- "singleR.celltype"
+DimPlot(seurat2,reduction="umap") + theme(legend.position="bottom",legend.text=element_text(size=6)) + guides(colour = guide_legend(override.aes = list(size=2)))
+```
+## TSNE plot annotated with cell types from SingleR
+```{r,message=FALSE,warning=FALSE}
+DimPlot(seurat2,reduction="tsne") + theme(legend.position="bottom",legend.text=element_text(size=6)) + guides(colour = guide_legend(override.aes = list(size=2)))
+```
+<button class="btn btn-primary" data-toggle="collapse" data-target="#Spectra2">Cogaps patterns annotated with cell types from SingleR</button> 
+<div id="Spectra2" class="collapse">    
+<object data="cogaps_celltype.pdf" width="750px" height="750px">
+    <embed src="cogaps_celltype.pdf">
+    </embed>
+</object>
+</div>
+
+```{r,message=FALSE,warning=FALSE}
+save.image("combine.Rdata")
+```
