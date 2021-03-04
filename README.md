@@ -9,7 +9,7 @@ Major steps in the workflow include:
 4) Reference-based cell type annotation using [singleR](https://bioconductor.org/packages/release/bioc/html/SingleR.html)
 5) Coordinated gene association analysis using [CoGAPS](https://bmcbioinformatics.biomedcentral.com/articles/10.1186/s12859-020-03796-9)
 6) Copy number variation (CNV) analysis using [CONICSmat](https://github.com/diazlab/CONICS/wiki/Tutorial---CONICSmat;---Dataset:-SmartSeq2-scRNA-seq-of-Oligodendroglioma)
-7) CNV evolutionary analysis and result visualization using [infercnv](https://www.bioconductor.org/packages/release/bioc/html/infercnv.html), [MEDALT](https://github.com/KChen-lab/MEDALT) and [Cytoscape](https://cytoscape.org/) in tumor-normal paired samples 
+7) CNV evolutionary analysis at cell cluster leveland result visualization using [infercnv (https://www.bioconductor.org/packages/release/bioc/html/infercnv.html), [MEDALT](https://github.com/KChen-lab/MEDALT) and [Cytoscape](https://cytoscape.org/) in tumor-normal paired samples 
 
 Expected results include:
 * Cellular transcriptome profiles: 
@@ -36,10 +36,9 @@ Expected results include:
 * [Cytoscape](https://cytoscape.org/)
 
 ## Run modes
-The pipeline has three run modes available; The first run mode is basic and the others are dependent on it; The detail of how-to-run is described in User's guider:
-* Basic single cell based analysis: CNV evolutionary analysis is performed at the single cell level 
-* Cluster based analysis: CNV evolutionary analysis is performed at the cell cluster level
-* Cluster based analysis in merged patient samples: CNV evolutionary analysis is performed at the cell cluster level and all samples in the same patient are merged
+The pipeline has two run modes available; The general run mode is basic and the CNV evolutionary run mode is dependent on it; The detail of how-to-run is described in User's guider:
+* General analysis: general single cell/nuclei RNA-seq analysis 
+* CNV evolutionary analysis: CNV evolutionary analysis at cell cluster level in tumor-normal paired samples
 
 ## User's guide
 ### I. Input requirements
@@ -50,10 +49,9 @@ Basic:
 * [cellramger-dna reference](https://support.10xgenomics.com/single-cell-dna/software/pipelines/latest/advanced/references)
 
 Optional:
-* Required for the run mode of cluster based analysis and can be generated using the result from the basic run mode:
-  {output_directory}/reanalysis/{sampleID}/outs/group.txt
-* Required for the run mode of cluster based analysis in merged patient samples and can be generated using the result from the basic run mode:
-  {working_directory}/patient/{patientID}/group.txt
+* Required for the run mode of CNV evolutionary analysis:
+  * {working_directory}/patient.txt
+  * gene position file required by the tool infercnv
 
 ### II. 10 X simple sample sheet csv file format
 Three columns with headers: Lane,Sample,Index
@@ -67,48 +65,32 @@ Lane,Sample,Index
 2,B,SI-GA-B4
 ```
 
-### III. group.txt file format
-* {output_directory}/reanalysis/{sampleID}/outs/group.txt
-
-Two tab-delimited, headerless columns: 10 X group ID, cell number
+### III. patient.txt file format
+One headerless column: patient ID
 
 Example:
 ```bash
-391	54
-364	19
-375	39
-387	33
+SI-A
 ```
-* {working_directory}/patient/{patientID}/group.txt
-
-Three tab-delimited, headerless columns: 10 X group ID, cell number, tissue type
-
-Example:
-```bash
-6518  2718	N
-1016	1083	T
-1024	953	T
-1020	92	T
-391	540	M
-364	190	M
-375	390	M
-387	330	M
-```
+* Note, if original sample IDs of the patient related samples are not labeled as: {patientID}-N and {patientID}-T, create symbolic inks of the seurat data of original samples in the same directory with modified names as: {output_directory}/reanalysis/{patientID}-N/outs/seurat/seurat.Rdata and {output_directory}/reanalysis/{patientID}-T/outs/seurat/seurat.Rdata  
 
 ### IV. Editing the config.yaml
 Basic parameters:
-* medalt: Path to MEDALT package installed directory
+* snRNA: If single nuclei RNA-seq, yes or no
 * flowcells: Flowcell ID
 * raw: Path to the raw 10 X data stored directory
 * table: Path to 10 X sample sheet
 * fastq: Path to desired directory to store fastq files
 * out: Path to desired directory to store output files
+* medalt: Path to MEDALT package installed directory
 * genome: hg38, hg19, mm10, etc
-* ref: Path to cellranger-dna reference stored directory
+* fasta: Path to reference fasta file
+* gtf: Path to reference gtf file
+* scRNA_ref: Path to cellranger reference stored directory
 
 Optional parameters:
-* group: Input 'ready' to initiate the run mode of cluster based analysis when the basic run mode is complete and the require group.txt files are ready
-* patient: Input 'ready' to initiate the run mode of cluster based Canalysis in merged patient samples when the basic run mode is complete and the require group.txt files are ready
+* genes: Path to gene position file required for tool infercnv
+* patient: Input 'ready' to initiate the run mode of CNV evolutionary analysis in tumor-normal paired samples when the basic run mode is complete, and the require patient.txt file and seurat data in the right naming format are ready
 
 ### V. To run
 * Clone the repository to your working directory
