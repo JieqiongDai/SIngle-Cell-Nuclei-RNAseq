@@ -71,6 +71,7 @@ One headerless column: patient ID
 Example:
 ```bash
 SI-A
+SI-B
 ```
 * Note, if original sample IDs of the patient related samples are not labeled as: {patientID}-N and {patientID}-T, create symbolic inks of the seurat data of original samples in the same directory with modified names as: {output_directory}/reanalysis/{patientID}-N/outs/seurat/seurat.Rdata and {output_directory}/reanalysis/{patientID}-T/outs/seurat/seurat.Rdata  
 
