@@ -2,12 +2,22 @@
 ## Description
 This snakemake pipeline is for single cell/nuclei RNA-sequencing analysis using 10 X single cell RNA-seq generated data. The pipeline may be run on an HPC or in a local environment.
 
+Major steps in the workflow include:
+1) Primary QC and general analysis using cellranger
+2) Secondary QC ([DIEM](https://github.com/marcalva/diem)) and reanalysis
+3) Futher QC filtering and generaly analysis using [Seurat](https://satijalab.org/seurat/)
+4) Reference-based cell type annotation using [singleR](https://bioconductor.org/packages/release/bioc/html/SingleR.html)
+5) Coordinated gene association analysis using [CoGAPS](https://bmcbioinformatics.biomedcentral.com/articles/10.1186/s12859-020-03796-9)
+6) Copy number variation (CNV) analysis using [CONICSmat](https://github.com/diazlab/CONICS/wiki/Tutorial---CONICSmat;---Dataset:-SmartSeq2-scRNA-seq-of-Oligodendroglioma)
+
+
 ## Software Requirements
 * [Snakemake](https://snakemake.readthedocs.io/en/stable/)
 * [cellranger](https://support.10xgenomics.com/single-cell-gene-expression/software/overview/welcome)
+* [R](https://www.r-project.org)
+* [MEDALT](https://github.com/KChen-lab/MEDALT)
 * [Xvfb](https://www.x.org/releases/X11R7.6/doc/man/man1/Xvfb.1.xhtml)
 * [Cytoscape](https://cytoscape.org/)
-* [R](https://www.r-project.org)
 
 ## Run modes
 The pipeline has three run modes available; The first run mode is basic and the others are dependent on it; The detail of how-to-run is described in User's guider:
