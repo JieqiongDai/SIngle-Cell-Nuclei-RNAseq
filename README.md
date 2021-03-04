@@ -51,7 +51,7 @@ Basic:
 Optional:
 * Required for the run mode of CNV evolutionary analysis:
   * {working_directory}/patient.txt
-  * gene position file required by the tool infercnv
+  * [gene position file required by the tool infercnv](https://github.com/JieqiongDai/SIngle-Cell-Nuclei-RNAseq/blob/master/genes/gene_order.txt)
 
 ### II. 10 X simple sample sheet csv file format
 Three columns with headers: Lane,Sample,Index
