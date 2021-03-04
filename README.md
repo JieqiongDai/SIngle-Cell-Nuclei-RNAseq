@@ -109,9 +109,9 @@ git clone https://github.com/JieqiongDai/SIngle-Cell-Nuclei-RNAseq.git
 * Look in log directory for logs for each rule
 * To view the snakemkae rule graph:
 ```bash
-snakemake --rulegraph | dot -T png > scDNA_whole.png
+snakemake --rulegraph | dot -T png > snRNA.png
 ```
-![dag](https://github.com/JieqiongDai/SingleCellCNV-Evolution/blob/master/scDNA_whole.png)
+![dag](https://github.com/JieqiongDai/SIngle-Cell-Nuclei-RNAseq/blob/master/snRNA.png)
 
 
 ### V. Example output
