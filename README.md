@@ -9,7 +9,23 @@ Major steps in the workflow include:
 4) Reference-based cell type annotation using [singleR](https://bioconductor.org/packages/release/bioc/html/SingleR.html)
 5) Coordinated gene association analysis using [CoGAPS](https://bmcbioinformatics.biomedcentral.com/articles/10.1186/s12859-020-03796-9)
 6) Copy number variation (CNV) analysis using [CONICSmat](https://github.com/diazlab/CONICS/wiki/Tutorial---CONICSmat;---Dataset:-SmartSeq2-scRNA-seq-of-Oligodendroglioma)
+7) CNV evolutionary analysis and result visualization using [infercnv](https://www.bioconductor.org/packages/release/bioc/html/infercnv.html), [MEDALT](https://github.com/KChen-lab/MEDALT) and [Cytoscape](https://cytoscape.org/) in tumor-normal paired samples 
 
+Expected results include:
+* Cellular transcriptome profiles: 
+  * Accessible to expression patterns of interested genes across cell clusters
+  * Analysis of cell cluster related genes and pathways
+  * Coordinated gene association detection
+* Intratumor heterogeneity analysis in single-cell resolution:
+  * Major cell clusters estimation, 
+  * Rare subclone detection
+  * Cell type identification
+* Cellular level relative copy number profiles: 
+  * Accessible to CNAs in the resolution of chromosome arm level
+* Reconstructing tumor copy number evolution lineages (in tumor-normal paired samples): 
+  * Lineage tracing of major tumor cell clusters 
+  * Lineage tracing of CNA (deep diving)
+  * Analysis of CNA related genes and pathways (deep diving)
 
 ## Software Requirements
 * [Snakemake](https://snakemake.readthedocs.io/en/stable/)
