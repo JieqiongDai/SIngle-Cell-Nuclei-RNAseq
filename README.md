@@ -117,7 +117,7 @@ snakemake --rulegraph | dot -T png > snRNA.png
 
 ### V. Example output
 ```bash
-. user/defined/output_dir/{}
+. user/defined/output_dir
 ├── link # main output files of cellranger of all samples
 │   ├── bam # indexed bam files
 │   │   ├── {sample_A}_possorted_genome_bam.bam
